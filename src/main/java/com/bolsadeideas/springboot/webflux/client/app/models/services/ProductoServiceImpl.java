@@ -3,10 +3,12 @@ package com.bolsadeideas.springboot.webflux.client.app.models.services;
 import java.util.Collections;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.BodyInserters;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 
 import com.bolsadeideas.springboot.webflux.client.app.models.Producto;
 
@@ -38,7 +40,22 @@ public class ProductoServiceImpl implements ProductoService {
                 .accept(MediaType.APPLICATION_JSON)
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(BodyInserters.fromValue(producto))
-                .exchangeToMono(response -> response.bodyToMono(Producto.class));
+                .exchangeToMono(response -> {
+                    if (response.statusCode().is2xxSuccessful()) {
+                        return response.bodyToMono(Producto.class);
+                    } else if (response.statusCode().equals(HttpStatus.BAD_REQUEST)) {
+                        return response.bodyToMono(String.class)
+                                .flatMap(body -> Mono.error(new WebClientResponseException(
+                                        "Error 400: " + body,
+                                        400,
+                                        "Bad Request",
+                                        null,
+                                        body.getBytes(),
+                                        null)));
+                    } else {
+                        return response.createException().flatMap(Mono::error);
+                    }
+                });
     }
 
     @Override
