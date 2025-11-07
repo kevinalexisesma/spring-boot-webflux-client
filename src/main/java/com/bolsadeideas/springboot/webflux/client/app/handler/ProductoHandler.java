@@ -2,8 +2,7 @@ package com.bolsadeideas.springboot.webflux.client.app.handler;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
-import org.springframework.http.MediaTypeFactory;
+import org.springframework.http.codec.multipart.FilePart;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 import org.springframework.web.reactive.function.server.ServerRequest;
@@ -13,6 +12,7 @@ import com.bolsadeideas.springboot.webflux.client.app.models.Producto;
 import com.bolsadeideas.springboot.webflux.client.app.models.services.ProductoService;
 
 import static org.springframework.web.reactive.function.BodyInserters.*;
+import static org.springframework.http.MediaType.*;
 
 import java.net.URI;
 import java.util.Date;
@@ -27,7 +27,7 @@ public class ProductoHandler {
 
     public Mono<ServerResponse> listar(ServerRequest request) {
         return ServerResponse.ok()
-                .contentType(MediaType.APPLICATION_JSON)
+                .contentType(APPLICATION_JSON)
                 .body(service.findAll(), Producto.class);
     }
 
@@ -35,7 +35,7 @@ public class ProductoHandler {
         String id = request.pathVariable("id");
         return service.findById(id)
                 .flatMap(producto -> ServerResponse.ok()
-                        .contentType(MediaType.APPLICATION_JSON)
+                        .contentType(APPLICATION_JSON)
                         .body(fromValue(producto)))
                 .switchIfEmpty(ServerResponse.notFound().build());
     }
@@ -50,12 +50,12 @@ public class ProductoHandler {
                     return service.save(p);
                 })
                 .flatMap(p -> ServerResponse.created(URI.create("/api/client/".concat(p.getId())))
-                        .contentType(MediaType.APPLICATION_JSON)
+                        .contentType(APPLICATION_JSON)
                         .bodyValue(p))
                 .onErrorResume(WebClientResponseException.class, errorResponse -> {
                     if (errorResponse.getStatusCode() == HttpStatus.BAD_REQUEST) {
                         return ServerResponse.badRequest()
-                                .contentType(MediaType.APPLICATION_JSON)
+                                .contentType(APPLICATION_JSON)
                                 .bodyValue(errorResponse.getResponseBodyAsString());
                     }
                     return Mono.error(errorResponse);
@@ -67,12 +67,23 @@ public class ProductoHandler {
         Mono<Producto> producto = request.bodyToMono(Producto.class);
         return producto
                 .flatMap(p -> ServerResponse.created(URI.create("/api/client/".concat(id)))
-                        .contentType(MediaType.APPLICATION_JSON)
+                        .contentType(APPLICATION_JSON)
                         .body(service.update(p, id), Producto.class));
     }
 
     public Mono<ServerResponse> eliminar(ServerRequest request) {
         String id = request.pathVariable("id");
         return service.delete(id).then(ServerResponse.noContent().build());
+    }
+
+    public Mono<ServerResponse> upload(ServerRequest request) {
+        String id = request.pathVariable("id");
+        return request.multipartData()
+                .map(multipart -> multipart.toSingleValueMap().get("file"))
+                .cast(FilePart.class)
+                .flatMap(file -> service.upload(file, id))
+                .flatMap(producto -> ServerResponse.created(URI.create("/api/client/".concat(id)))
+                        .contentType(APPLICATION_JSON)
+                        .bodyValue(producto));
     }
 }
